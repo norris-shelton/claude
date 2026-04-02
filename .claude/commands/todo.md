@@ -1,3 +1,8 @@
+---
+description: Update TODO.md with changes and improvements made during this session
+allowed-tools: [Read, Edit, Write]
+---
+
 # todo
 
 This repository maintains a permanent `TODO.md` file at the root level for tracking all changes and improvements made by Claude Code. When working on this codebase:
