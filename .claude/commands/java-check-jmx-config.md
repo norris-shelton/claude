@@ -1,3 +1,9 @@
+---
+description: Check JMX configuration and DataSource setup, auto-fixing any missing properties
+argument-hint: [project-path]
+allowed-tools: [Bash, Read, Edit, Write, Glob, Grep]
+---
+
 # Check JMX Configuration
 
 Verify this project's JMX configuration and DataSource wrapper class naming convention. Automatically fix any missing
@@ -45,11 +51,11 @@ with the descriptive name first:
 ```java
 // CORRECT — one JMX entry, named "rwWinticketDataSource"; "dataSource" is an alias only
 @Bean({"rwWinticketDataSource", "dataSource"})
-public DataSource rwWinticketDataSource() { ... }
+public DataSource rwWinticketDataSource() { /*...*/ }
 
 // WRONG — creates a second JMX entry named "dataSource"
 @Bean("dataSource")
-public DataSource dataSource() { return rwWinticketDataSource; }
+public DataSource dataSource() {return rwWinticketDataSource;}
 ```
 
 - PASS if no such wrapper/delegate `@Bean` methods exist
@@ -62,7 +68,7 @@ Search the project for `application.properties` files under `src/main/resources`
 required JMX properties:
 
 | Property | Required Value |
-|---|---|
+| --- | --- |
 | `spring.jmx.enabled` | `true` |
 | `spring.jmx.unique-names` | `true` |
 | `spring.jmx.default-domain` | `com.twinspires.<appname>` (see below) |
@@ -92,6 +98,10 @@ Use these exact values when adding missing properties:
 Only add properties that are missing; do not duplicate existing ones.
 
 ### 4. Check for JmxTest class
+
+**Prerequisite:** Only perform this step if a DataSource wrapper class (extending
+`org.apache.tomcat.jdbc.pool.DataSource`) was found in step 1. If no JDBC DataSource exists in the project, skip this
+step entirely and report **N/A — no JDBC DataSource in project**.
 
 Search `src/test/java` for a class named `JmxTest`. The domain used in its `ObjectName` pattern must match
 `spring.jmx.default-domain` (i.e., `com.twinspires.<appname>`), derived the same way as in step 2.
@@ -204,6 +214,7 @@ If the file exists but uses a wrong domain in the `ObjectName` pattern, update i
 
 **JmxTest**
 
+- N/A if no JDBC DataSource wrapper class exists in the project (skip entirely)
 - PASS if exists with correct domain pattern
 - FAIL if missing or wrong domain — confirm created or fixed
 
