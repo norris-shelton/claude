@@ -1,5 +1,5 @@
 ---
-description: Check JMX configuration and DataSource setup in a Spring Boot Java service, auto-fixing missing properties and conventions. Triggers: "check JMX", "fix JMX domain", "DataSource MBean", "JConsole DataSource", "JmxTest".
+description: Check, audit, or fix JMX configuration and DataSource MBean setup in a Spring Boot Java service. Auto-derives base package; fixes default-domain, @ManagedResource, package placement, duplicate beans, missing properties, and the JmxTest. Triggers: check/audit/configure JMX, fix JMX domain, register DataSource as MBean, DataSource not showing in JConsole, wrong JMX domain, MBean under sub-package, duplicate DataSource in JConsole, pool metrics missing, @ManagedResource annotation, spring.jmx.default-domain, server.tomcat.mbeanregistry.enabled, tomcat-jdbc pool, JmxTest.
 argument-hint: [project-path]
 allowed-tools: [Bash, Read, Edit, Write, Glob, Grep]
 ---

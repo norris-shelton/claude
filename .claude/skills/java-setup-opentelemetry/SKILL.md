@@ -1,5 +1,5 @@
 ---
-description: Set up OpenTelemetry observability for a Spring Boot 3 Java service (Micrometer Tracing + OTLP → DataDog Agent or OTel collector). Triggers: "set up OpenTelemetry", "configure tracing", "OTLP exporter", "Micrometer tracing", "DataDog APM".
+description: Set up OpenTelemetry observability for a Spring Boot 3 Java service (Micrometer Tracing + OTLP → DataDog Agent or any OTel collector). Auto-derives base package and service name; Maven/Gradle. Triggers: set up OpenTelemetry, enable distributed tracing, add observability, configure tracing, send traces to DataDog, OTLP exporter, wire up OTel collector, Micrometer tracing, DataDog APM, propagate trace headers, no traces in DataDog, missing traceId in logs, trace context lost across services, spans not exported, baggage not propagated, micrometer-tracing-bridge-otel, management.otlp.tracing.endpoint, ObservationRegistry, @Observed annotation, X-Amzn-Trace-Id, X-Amz-Cf-Id, X-TS-AK-GRN, akamai global identifier, add Akamai GRN, add Akamai tracing, CloudFront trace.
 argument-hint: [project-path]
 allowed-tools: [Bash, Read, Edit, Write, Glob, Grep]
 ---

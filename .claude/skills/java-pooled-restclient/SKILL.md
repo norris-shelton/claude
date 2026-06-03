@@ -1,5 +1,5 @@
 ---
-description: Configure outbound HTTP for a Spring service — managed Apache HttpClient 5 connection pool with cookie storage disabled (prevents LB stickiness pinning). Triggers: "fix RestClient", "outbound HTTP pool", "stop sticky sessions", "AWSALB cookie", "disable cookie management".
+description: Configure outbound HTTP for a Spring service — managed Apache HttpClient 5 connection pool with cookie storage disabled (prevents LB stickiness pinning) and explicit timeouts. Triggers: fix/configure/set up RestClient, RestClient bean, outbound HTTP pool, add connection pool, share HTTP client across services, stop sticky sessions, all traffic pinned to one pod, downstream load not balanced, connection reset by peer, ConnectionResetException, SocketException connection reset, java.net.SocketException Connection reset, intermittent 502/504 from downstream, half-closed connection reuse, stale connection, NoHttpResponseException, Broken pipe on outbound call, TTL longer than ALB idle timeout, RestClient.create() everywhere, RestClient has no timeout, AWSALB cookie, AWSALBCORS, BIGipServer, JSESSIONID replay, disableCookieManagement, PoolingHttpClientConnectionManager, CloseableHttpClient bean, HttpComponentsClientHttpRequestFactory.
 argument-hint: [project-path]
 allowed-tools: [Bash, Read, Edit, Write, Glob, Grep]
 ---
