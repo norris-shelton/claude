@@ -1,5 +1,13 @@
 ---
-description: Check, audit, or fix JMX configuration and DataSource MBean setup in a Spring Boot Java service. Auto-derives base package; fixes default-domain, @ManagedResource, package placement, duplicate beans, missing properties, and the JmxTest. Triggers: check/audit/configure JMX, fix JMX domain, register DataSource as MBean, DataSource not showing in JConsole, wrong JMX domain, MBean under sub-package, duplicate DataSource in JConsole, pool metrics missing, @ManagedResource annotation, spring.jmx.default-domain, server.tomcat.mbeanregistry.enabled, tomcat-jdbc pool, JmxTest.
+name: java-check-jmx-config
+model: haiku
+effort: low
+description: This skill should be used when a user wants to check, audit, or fix JMX configuration and DataSource MBean setup in a Spring Boot Java service. Auto-derives the base package and fixes default-domain, @ManagedResource, package placement, duplicate beans, missing properties, and the JmxTest. Triggers include "check JMX", "audit JMX", "configure JMX", "fix JMX domain", "register DataSource as MBean", "DataSource not showing in JConsole", "wrong JMX domain", "MBean under sub-package", "duplicate DataSource in JConsole", "pool metrics missing", "@ManagedResource annotation", "spring.jmx.default-domain", "server.tomcat.mbeanregistry.enabled", "tomcat-jdbc pool", "JmxTest".
+version: 0.1.0
+metadata:
+  author: Twinspires Engineering
+  tags: workflow,java,spring,jmx,datasource,mbean,observability
+  alwaysApply: "false"
 argument-hint: [project-path]
 allowed-tools: [Bash, Read, Edit, Write, Glob, Grep]
 ---
@@ -130,8 +138,8 @@ class JmxTest {
                     "Expected at least one DataSource MBean under <base.package>:type=DataSource,*");
 
             for (ObjectName name : names) {
-                // Pool implementations sometimes expose these as int, sometimes long.
-                // Use Number to be resilient across Tomcat / HikariCP / DBCP2.
+                // Tomcat JDBC pool sometimes exposes these attributes as int, sometimes long.
+                // Use Number to handle either representation.
                 long maxActive   = ((Number) mBeanServer.getAttribute(name, "MaxActive")).longValue();
                 long maxIdle     = ((Number) mBeanServer.getAttribute(name, "MaxIdle")).longValue();
                 long maxWait     = ((Number) mBeanServer.getAttribute(name, "MaxWait")).longValue();
