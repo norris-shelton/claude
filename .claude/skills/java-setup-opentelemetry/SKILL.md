@@ -1,5 +1,13 @@
 ---
-description: Set up OpenTelemetry observability for a Spring Boot 3 Java service (Micrometer Tracing + OTLP → DataDog Agent or any OTel collector). Auto-derives base package and service name; Maven/Gradle. Triggers: set up OpenTelemetry, enable distributed tracing, add observability, configure tracing, send traces to DataDog, OTLP exporter, wire up OTel collector, Micrometer tracing, DataDog APM, propagate trace headers, no traces in DataDog, missing traceId in logs, trace context lost across services, spans not exported, baggage not propagated, micrometer-tracing-bridge-otel, management.otlp.tracing.endpoint, ObservationRegistry, @Observed annotation, X-Amzn-Trace-Id, X-Amz-Cf-Id, X-TS-AK-GRN, akamai global identifier, add Akamai GRN, add Akamai tracing, CloudFront trace.
+name: java-setup-opentelemetry
+model: sonnet
+effort: medium
+description: This skill should be used when a user wants to set up OpenTelemetry observability for a Spring Boot 3 Java service (Micrometer Tracing + OTLP → DataDog Agent or any OTel collector). Triggers include "set up OpenTelemetry", "configure tracing", "OTLP exporter", "Micrometer tracing", "DataDog APM", "no traces in DataDog", "missing traceId in logs", "trace context lost across services", "propagate trace headers", "add Akamai GRN", "X-Amzn-Trace-Id", "X-Amz-Cf-Id", "X-TS-AK-GRN", "virtual thread metrics", "virtual threads DataDog", "thread metrics flatlined", "VirtualThreadMetrics", "virtual thread pinning".
+version: 0.9.0
+metadata:
+  author: Twinspires Engineering
+  tags: workflow,java,observability,opentelemetry,micrometer,datadog,tracing
+  alwaysApply: "false"
 argument-hint: [project-path]
 allowed-tools: [Bash, Read, Edit, Write, Glob, Grep]
 ---
@@ -69,8 +77,9 @@ Add to `src/main/resources/application.properties`. Substitute the auto-derived 
 # Application identification
 spring.application.name=<service>
 
-# Enable context propagation (recommended by Spring Boot 3)
-spring.threads.virtual.enabled=false
+# Virtual threads (optional). Only enable after validating library compatibility and context
+# propagation — and see section 9 for the DataDog metric impact and VirtualThreadMetrics setup.
+spring.threads.virtual.enabled=${SPRING_THREADS_VIRTUAL_ENABLED:false}
 
 # Tracing & observability
 management.tracing.enabled=true
@@ -135,11 +144,11 @@ For Gradle, add to `<web-module>/build.gradle`:
 
 ```groovy
 processResources {
-    filesMatching('application*.properties') {
-        expand(project.properties)
-    }
-    filesMatching('application*.yml') {
-        expand(project.properties)
+    filesMatching(['application*.properties', 'application*.yml']) {
+        // Replace Maven-style @...@ tokens in resources
+        filter(org.apache.tools.ant.filters.ReplaceTokens, tokens: [
+                'project.version': project.version.toString()
+        ])
     }
 }
 ```
@@ -160,7 +169,7 @@ curl -sf -X POST "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}/v1/trace
 
 This `HandlerInterceptor` extracts CDN / infra telemetry headers from inbound requests, puts them in SLF4J MDC for log correlation, and starts a Micrometer `Observation` so the key-values become baggage propagated to downstream services.
 
-> **Propagation note.** The interceptor starts a *new* observation rather than mutating the controller's existing observation. Baggage attached here propagates to downstream calls **only if** the outbound HTTP client runs within this observation's scope — Spring's auto-instrumented `RestClient` / `WebClient` / `RestTemplate` (when used with the Micrometer-instrumented `ObservationRegistry`) handle this automatically. If you have hand-rolled `HttpClient` calls, wrap them in `observation.scoped(() -> ...)` or they won't carry the headers.
+> **Propagation note.** The interceptor starts a *new* observation and explicitly opens a scope on the request thread (`observation.openScope()`), making it the *current* context. Spring's auto-instrumented `RestClient` / `WebClient` / `RestTemplate` only see this observation as their parent — and propagate its baggage downstream — when it's the current context. Without `openScope()`, downstream calls inherit the controller's observation (or none) and the telemetry key-values are lost. The scope is closed in `afterCompletion` before the observation is stopped. For hand-rolled `HttpClient` calls outside the request thread, wrap them in `observation.scoped(() -> ...)`.
 
 Place in `<base.package>.web`.
 
@@ -188,6 +197,7 @@ public class TelemetryObservationInterceptor implements HandlerInterceptor {
 
     private static final Logger logger = LoggerFactory.getLogger(TelemetryObservationInterceptor.class);
     private static final String TELEMETRY_OBSERVATION_KEY = "telemetry.observation";
+    private static final String TELEMETRY_OBSERVATION_SCOPE_KEY = "telemetry.observation.scope";
 
     private final ObservationRegistry observationRegistry;
 
@@ -231,7 +241,12 @@ public class TelemetryObservationInterceptor implements HandlerInterceptor {
             }
 
             Observation observation = observationBuilder.start();
+            // Open a scope so this observation becomes the *current* context on the request thread.
+            // Without openScope(), Spring's auto-instrumented RestClient/WebClient/RestTemplate will
+            // not see this observation as the parent and the key-values won't propagate downstream.
+            Observation.Scope scope = observation.openScope();
             request.setAttribute(TELEMETRY_OBSERVATION_KEY, observation);
+            request.setAttribute(TELEMETRY_OBSERVATION_SCOPE_KEY, scope);
         } catch (Exception e) {
             logger.warn("Failed to process telemetry headers, continuing with default tracing", e);
         }
@@ -242,6 +257,10 @@ public class TelemetryObservationInterceptor implements HandlerInterceptor {
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response,
                                 Object handler, @Nullable Exception ex) {
         try {
+            Observation.Scope scope = (Observation.Scope) request.getAttribute(TELEMETRY_OBSERVATION_SCOPE_KEY);
+            if (scope != null) {
+                scope.close();
+            }
             Observation observation = (Observation) request.getAttribute(TELEMETRY_OBSERVATION_KEY);
             if (observation != null) {
                 if (ex != null) {
@@ -305,6 +324,51 @@ Hit any application endpoint and confirm traces appear in DataDog APM under the 
 
 Use `io.micrometer.observation.annotation.@Observed` on methods, or inject `Tracer` / `OpenTelemetry` for custom spans.
 
+## 9. Virtual threads: keep DataDog telemetry meaningful
+
+**JDK gate — check before applying.** This section requires **JDK 21+**. Determine the project's JDK from the build file (`maven.compiler.release` / `<java.version>` in `pom.xml`, or the Gradle toolchain / `sourceCompatibility`); if it is below 21, **skip this entire section** — do not add `micrometer-java21` or the binder (the app would fail at runtime with unsupported-class-version errors), and note that `spring.threads.virtual.enabled` is inert below JDK 21 anyway.
+
+Apply this section whenever the service runs on JDK 21+ with `spring.threads.virtual.enabled=true` (the section 2 property). Trace reporting itself is unaffected — spans start on the request's virtual thread and export normally — but the standard thread metrics silently stop representing load:
+
+- **`jvm.threads.*` goes quiet and misleads.** Micrometer's `JvmThreadMetrics` (`jvm.threads.live`, `jvm.threads.states`, `jvm.threads.peak`) is built on `ThreadMXBean`, which by spec does **not** count virtual threads. With platform threads those graphs track request concurrency; with virtual threads they flatline at a couple dozen carrier/housekeeping threads no matter how loaded the service is. Any DataDog monitor or dashboard keyed on thread count stops measuring anything.
+- **`tomcat.threads.*` disappears.** `tomcat.threads.busy` / `tomcat.threads.current` / `tomcat.threads.config.max` reflect the connector's platform-thread pool, which Boot's virtual-thread customizer replaces with a virtual-thread-per-task executor.
+- **Replacement load signals** to move dashboards/monitors to: `http.server.requests` active/throughput (unaffected, still the best request-level signal), `tomcat.connections.current` vs `server.tomcat.max-connections` (the new front-door cap), and the DataSource pool's `numActive` (the new throttle — see [[java-check-jmx-config]]).
+
+### Add `VirtualThreadMetrics`
+
+Micrometer's `micrometer-java21` module ships `VirtualThreadMetrics` — pinning duration (`jvm.threads.virtual.pinned`) and scheduler submit failures (`jvm.threads.virtual.submit.failed`) — the post-migration health signals to watch in DataDog. Version is managed by the Spring Boot BOM; do not pin. (The `java21` in the artifactId is Micrometer's naming convention for the *minimum* JDK whose APIs the module needs — not the JDK you must run. There is no `micrometer-java25`; this is the correct artifact for any JDK ≥ 21, including 25.)
+
+Maven (`<web-module>/pom.xml`):
+
+```xml
+<!-- Virtual-thread metrics (pinning, submit failures) — only with spring.threads.virtual.enabled=true -->
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-java21</artifactId>
+</dependency>
+```
+
+Gradle (`<web-module>/build.gradle[.kts]`):
+
+```groovy
+implementation 'io.micrometer:micrometer-java21'
+```
+
+On Spring Boot **3.5+** the dependency is all that's needed — Boot auto-configures the binder. On earlier 3.x, register it explicitly (Spring closes the binder's JFR stream on shutdown since it's `AutoCloseable`):
+
+```java
+import io.micrometer.java21.instrument.binder.jdk.VirtualThreadMetrics;
+
+@Bean
+public VirtualThreadMetrics virtualThreadMetrics() {
+    return new VirtualThreadMetrics();
+}
+```
+
+Verify: `curl -sf http://localhost:8080/actuator/metrics/jvm.threads.virtual.pinned` returns 200 once virtual threads are enabled and the binder is registered.
+
+> **Pinning context.** On JDK 24+ (JEP 491), `synchronized` no longer pins carrier threads, so `jvm.threads.virtual.pinned` should stay near zero — only JNI/native frames still pin. A sustained non-zero pinned duration on JDK ≤ 23 usually points at `synchronized` I/O paths (e.g. older JDBC drivers).
+
 ## Acceptance checklist
 
 - [ ] Dependencies added to `<web-module>` build file (Maven or Gradle)
@@ -318,6 +382,7 @@ Use `io.micrometer.observation.annotation.@Observed` on methods, or inject `Trac
 - [ ] `logback.xml` pattern includes `AmznTraceId`, `Infosec`, `AkTraceId`, `CfTraceId` MDC keys
 - [ ] `/actuator/health` and `/actuator/metrics` return 200
 - [ ] Traces visible in DataDog APM
+- [ ] If on JDK 21+ with `spring.threads.virtual.enabled=true`: `micrometer-java21` added, `jvm.threads.virtual.pinned` present in `/actuator/metrics`, and dashboards/monitors moved off `jvm.threads.*` / `tomcat.threads.*` (section 9); if below JDK 21, section 9 skipped entirely
 
 ## Related skills
 
