@@ -1,11 +1,19 @@
 ---
-description: Update TODO.md with changes and improvements made during this session
+name: todo
+model: sonnet
+effort: low
+description: This skill should be used when the user invokes "/todo" or asks to update TODO.md with the changes and improvements made during this session.
+version: 0.8.0
+metadata:
+  author: Twinspires Engineering
+  tags: workflow,documentation,audit-trail
+  alwaysApply: "false"
 allowed-tools: [Read, Edit, Write]
 ---
 
-# todo
+# Todo
 
-This repository maintains a permanent `TODO.md` file at the root level for tracking all changes and improvements made by Claude Code. When working on this codebase:
+Maintain a permanent `TODO.md` file at the project root to track all changes and improvements made by Claude Code. When working on this codebase:
 
 - **ALWAYS update TODO.md** to document any changes, improvements, or tasks completed
 - Add new entries at the **TOP** of the file with the current date
